@@ -209,34 +209,27 @@
     </div>
 
     <script>
-        // 更新学习进度统计
         function updateStats() {
             let totalLearned = 0;
             const units = ["初一", "初二", "初三", "高中必修", "高中选修"];
 
             units.forEach(unit => {
                 const learned = JSON.parse(localStorage.getItem('learned_' + unit) || '[]');
-                const count = learned.length;
-                totalLearned += count;
+                totalLearned += learned.length;
 
                 const unitData = {"初一": 621, "初二": 506, "初三": 220, "高中必修": 670, "高中选修": 159};
-                const total = unitData[unit];
-                const percent = (count / total * 100).toFixed(1);
+                const percent = (learned.length / unitData[unit] * 100).toFixed(1);
 
                 const progressFill = document.getElementById('progress_' + unit);
                 const progressText = document.getElementById('progressText_' + unit);
-
                 if (progressFill) progressFill.style.width = percent + '%';
-                if (progressText) {
-                    if (count > 0) {
-                        progressText.textContent = '已学习 ' + count + '/' + total + ' (' + percent + '%)';
-                    }
+                if (progressText && learned.length > 0) {
+                    progressText.textContent = '已学习 ' + learned.length + '/' + unitData[unit] + ' (' + percent + '%)';
                 }
             });
 
             document.getElementById('learnedWords').textContent = totalLearned;
         }
-
         updateStats();
     </script>
 </body>

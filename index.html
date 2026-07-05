@@ -154,6 +154,9 @@
             transform: translateY(-2px);
             box-shadow: 0 5px 20px rgba(0,0,0,0.2);
         }
+        .action-btn:active {
+            transform: translateY(0);
+        }
 
         /* Word List Section */
         .section-title {
@@ -205,6 +208,7 @@
             text-align: center;
             cursor: pointer;
             transition: all 0.3s;
+            position: relative;
         }
         .word-item:hover {
             background: rgba(255,255,255,0.2);
@@ -227,12 +231,16 @@
         .word-item.learned {
             opacity: 0.6;
         }
-        .word-item.learned::after {
-            content: '✓';
+        .word-item.learned .learned-mark {
+            display: block;
             position: absolute;
             top: 5px;
             right: 10px;
             color: #27ae60;
+            font-size: 16px;
+        }
+        .word-item .learned-mark {
+            display: none;
         }
 
         /* Modal for word details */
@@ -257,22 +265,25 @@
             border-radius: 20px;
             max-width: 500px;
             width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
             color: white;
         }
         .modal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
         }
         .modal-title {
             font-size: 32px;
             font-weight: bold;
         }
         .modal-close {
-            font-size: 24px;
+            font-size: 28px;
             cursor: pointer;
             opacity: 0.7;
+            line-height: 1;
         }
         .modal-close:hover {
             opacity: 1;
@@ -293,6 +304,7 @@
         }
         .modal-value {
             font-size: 16px;
+            line-height: 1.5;
         }
         .modal-meaning {
             font-size: 18px;
@@ -311,6 +323,24 @@
             border: 1px solid rgba(230, 126, 34, 0.5);
         }
 
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #27ae60;
+            color: white;
+            padding: 15px 30px;
+            border-radius: 10px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 2000;
+        }
+        .toast.show {
+            opacity: 1;
+        }
+
         /* Footer */
         .footer {
             text-align: center;
@@ -327,6 +357,8 @@
             .word-grid { grid-template-columns: repeat(2, 1fr); }
             .filter-bar { flex-direction: column; }
             .search-input { width: 100%; }
+            .action-buttons { flex-direction: column; }
+            .action-btn { width: 100%; }
         }
     </style>
 </head>
@@ -359,7 +391,7 @@
                 <div class="date-badge" id="todayDate"></div>
             </div>
             <div class="word-display">
-                <div class="word-text" id="dailyWord"></div>
+                <div class="word-text" id="dailyWord">加载中...</div>
                 <div class="phonetic-text" id="dailyPhonetic"></div>
             </div>
             <div class="word-info">
@@ -381,25 +413,25 @@
                 </div>
             </div>
             <div class="action-buttons">
-                <button class="action-btn btn-mark" onclick="markLearned()">✓ 标记已学习</button>
-                <button class="action-btn btn-next" onclick="nextWord()">→ 下一个单词</button>
+                <button class="action-btn btn-mark" id="btnMark">✓ 标记已学习</button>
+                <button class="action-btn btn-next" id="btnNext">→ 下一个单词</button>
             </div>
         </div>
 
         <!-- Word List -->
         <div class="section-title">📚 全部单词</div>
         <div class="filter-bar">
-            <button class="filter-btn active" onclick="filterWords('all')">全部</button>
-            <button class="filter-btn" onclick="filterWords('中考核心')">中考核心</button>
-            <button class="filter-btn" onclick="filterWords('中考拓展')">中考拓展</button>
-            <button class="filter-btn" onclick="filterWords('中考一般')">中考一般</button>
-            <input type="text" class="search-input" placeholder="搜索单词..." onkeyup="searchWords(this.value)">
+            <button class="filter-btn active" id="filterAll">全部</button>
+            <button class="filter-btn" id="filterCore">中考核心</button>
+            <button class="filter-btn" id="filterExpand">中考拓展</button>
+            <button class="filter-btn" id="filterGeneral">中考一般</button>
+            <input type="text" class="search-input" placeholder="搜索单词..." id="searchInput">
         </div>
-        <div class="word-grid" id="wordGrid"></div>
+        <div class="word-grid" id="wordGrid">加载中...</div>
 
         <!-- Footer -->
         <div class="footer">
-            <p>初三英语词汇学习工具 | 数据来源：Core Words & Expressions</p>
+            <p>初三英语词汇学习工具 | 点击单词查看详情</p>
         </div>
     </div>
 
@@ -408,7 +440,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <div class="modal-title" id="modalWord"></div>
-                <div class="modal-close" onclick="closeModal()">×</div>
+                <div class="modal-close" id="modalClose">×</div>
             </div>
             <div class="modal-phonetic" id="modalPhonetic"></div>
             <div class="modal-section">
@@ -438,86 +470,167 @@
         </div>
     </div>
 
+    <!-- Toast -->
+    <div class="toast" id="toast">已标记为学习完成！</div>
+
+    <!-- Load words data -->
     <script src="words.js"></script>
+
     <script>
-        // Initialize
+        // Global variables - initialize first
         let currentDailyIndex = 0;
-        let learnedWords = JSON.parse(localStorage.getItem('learnedWords') || '[]');
+        let learnedWords = [];
+
+        // Safe load from localStorage
+        try {
+            const saved = localStorage.getItem('learnedWords');
+            if (saved) {
+                learnedWords = JSON.parse(saved);
+            }
+        } catch (e) {
+            learnedWords = [];
+        }
+
+        // Show toast notification
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
 
         // Set today's date
-        document.getElementById('todayDate').textContent = new Date().toLocaleDateString('zh-CN');
+        function setDate() {
+            const today = new Date();
+            const dateStr = today.toLocaleDateString('zh-CN', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            document.getElementById('todayDate').textContent = dateStr;
+        }
 
         // Calculate daily word index based on date
         function getDailyIndex() {
             const today = new Date();
-            const start = new Date(2024, 0, 1); // Start from Jan 1, 2024
+            const start = new Date(2024, 0, 1);
             const diffDays = Math.floor((today - start) / (1000 * 60 * 60 * 24));
-            return diffDays % wordsData.length;
+            const totalWords = wordsData ? wordsData.length : 220;
+            return diffDays % totalWords;
         }
 
         // Display daily word
         function showDailyWord() {
+            if (!wordsData || wordsData.length === 0) {
+                console.error('wordsData not loaded');
+                return;
+            }
+
             currentDailyIndex = getDailyIndex();
             const word = wordsData[currentDailyIndex];
-            document.getElementById('dailyWord').textContent = word.word;
-            document.getElementById('dailyPhonetic').textContent = word.phonetic;
-            document.getElementById('dailyMeaning').textContent = word.meaning;
-            document.getElementById('dailyExample').textContent = word.example;
-            document.getElementById('dailyCollocation').textContent = word.collocation;
-            document.getElementById('dailyExamPoint').textContent = word.examPoint;
+
+            document.getElementById('dailyWord').textContent = word.word || '';
+            document.getElementById('dailyPhonetic').textContent = word.phonetic || '';
+            document.getElementById('dailyMeaning').textContent = word.meaning || '';
+            document.getElementById('dailyExample').textContent = word.example || '';
+            document.getElementById('dailyCollocation').textContent = word.collocation || '';
+            document.getElementById('dailyExamPoint').textContent = word.examPoint || '';
         }
 
         // Mark as learned
         function markLearned() {
+            if (!wordsData) return;
+
             const word = wordsData[currentDailyIndex].word;
             if (!learnedWords.includes(word)) {
                 learnedWords.push(word);
-                localStorage.setItem('learnedWords', JSON.stringify(learnedWords));
+                try {
+                    localStorage.setItem('learnedWords', JSON.stringify(learnedWords));
+                } catch (e) {
+                    console.warn('localStorage not available');
+                }
                 updateStats();
                 updateWordGrid();
+                showToast('已标记为学习完成 ✓');
+            } else {
+                showToast('这个单词已经学过了');
             }
             nextWord();
         }
 
         // Next word
         function nextWord() {
+            if (!wordsData) return;
+
             currentDailyIndex = (currentDailyIndex + 1) % wordsData.length;
             showDailyWord();
         }
 
         // Update stats
         function updateStats() {
-            document.getElementById('learnedCount').textContent = learnedWords.length;
-            document.getElementById('remainingCount').textContent = wordsData.length - learnedWords.length;
+            const total = wordsData ? wordsData.length : 220;
+            const learned = learnedWords.length;
+            document.getElementById('totalWords').textContent = total;
+            document.getElementById('learnedCount').textContent = learned;
+            document.getElementById('remainingCount').textContent = total - learned;
         }
 
         // Generate word grid
         function updateWordGrid() {
+            if (!wordsData) return;
+
             const grid = document.getElementById('wordGrid');
             grid.innerHTML = '';
+
             wordsData.forEach((word, index) => {
-                const freqClass = word.freq.includes('核心') ? 'freq-core' :
-                                 word.freq.includes('拓展') ? 'freq-expand' : 'freq-general';
-                const learnedClass = learnedWords.includes(word.word) ? 'learned' : '';
+                const freqClass = (word.freq && word.freq.includes('核心')) ? 'freq-core' :
+                                 (word.freq && word.freq.includes('拓展')) ? 'freq-expand' : 'freq-general';
+                const isLearned = learnedWords.includes(word.word);
+
                 const item = document.createElement('div');
-                item.className = 'word-item ' + learnedClass;
+                item.className = 'word-item' + (isLearned ? ' learned' : '');
+                item.dataset.index = index;
+                item.dataset.freq = word.freq || '';
+                item.dataset.word = (word.word || '').toLowerCase();
+
                 item.innerHTML = `
-                    <div class="word">${word.word}</div>
-                    <div class="freq-badge ${freqClass}">${word.freq}</div>
+                    <div class="word">${word.word || ''}</div>
+                    <div class="freq-badge ${freqClass}">${word.freq || ''}</div>
+                    <div class="learned-mark">✓</div>
                 `;
-                item.onclick = () => showWordDetail(index);
+
+                item.addEventListener('click', function() {
+                    showWordDetail(index);
+                });
+
                 grid.appendChild(item);
             });
         }
 
-        // Filter words
+        // Filter words by frequency
         function filterWords(freq) {
-            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
+            // Update button states
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            if (freq === 'all') {
+                document.getElementById('filterAll').classList.add('active');
+            } else if (freq === '中考核心') {
+                document.getElementById('filterCore').classList.add('active');
+            } else if (freq === '中考拓展') {
+                document.getElementById('filterExpand').classList.add('active');
+            } else if (freq === '中考一般') {
+                document.getElementById('filterGeneral').classList.add('active');
+            }
+
+            // Filter items
             const items = document.querySelectorAll('.word-item');
             items.forEach(item => {
-                const freqBadge = item.querySelector('.freq-badge').textContent;
-                if (freq === 'all' || freqBadge === freq) {
+                const itemFreq = item.dataset.freq;
+                if (freq === 'all' || itemFreq === freq) {
                     item.style.display = 'block';
                 } else {
                     item.style.display = 'none';
@@ -527,25 +640,32 @@
 
         // Search words
         function searchWords(query) {
-            query = query.toLowerCase();
+            query = query.toLowerCase().trim();
             const items = document.querySelectorAll('.word-item');
+
             items.forEach(item => {
-                const word = item.querySelector('.word').textContent.toLowerCase();
-                item.style.display = word.includes(query) ? 'block' : 'none';
+                const wordText = item.dataset.word;
+                if (query === '' || wordText.includes(query)) {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
             });
         }
 
         // Show word detail modal
         function showWordDetail(index) {
+            if (!wordsData) return;
+
             const word = wordsData[index];
-            document.getElementById('modalWord').textContent = word.word;
-            document.getElementById('modalPhonetic').textContent = word.phonetic;
-            document.getElementById('modalMeaning').textContent = word.meaning;
-            document.getElementById('modalExample').textContent = word.example;
-            document.getElementById('modalCollocation').textContent = word.collocation;
-            document.getElementById('modalDerivative').textContent = word.derivative;
-            document.getElementById('modalSynonym').textContent = word.synonym;
-            document.getElementById('modalExamPoint').textContent = word.examPoint;
+            document.getElementById('modalWord').textContent = word.word || '';
+            document.getElementById('modalPhonetic').textContent = word.phonetic || '';
+            document.getElementById('modalMeaning').textContent = word.meaning || '';
+            document.getElementById('modalExample').textContent = word.example || '';
+            document.getElementById('modalCollocation').textContent = word.collocation || '';
+            document.getElementById('modalDerivative').textContent = word.derivative || '';
+            document.getElementById('modalSynonym').textContent = word.synonym || '';
+            document.getElementById('modalExamPoint').textContent = word.examPoint || '';
             document.getElementById('wordModal').classList.add('active');
         }
 
@@ -554,15 +674,44 @@
             document.getElementById('wordModal').classList.remove('active');
         }
 
-        // Close modal on outside click
-        document.getElementById('wordModal').onclick = function(e) {
-            if (e.target === this) closeModal();
-        };
+        // Initialize everything when DOM is ready
+        function init() {
+            setDate();
+            showDailyWord();
+            updateStats();
+            updateWordGrid();
 
-        // Initialize on load
-        showDailyWord();
-        updateStats();
-        updateWordGrid();
+            // Bind button events
+            document.getElementById('btnMark').addEventListener('click', markLearned);
+            document.getElementById('btnNext').addEventListener('click', nextWord);
+            document.getElementById('modalClose').addEventListener('click', closeModal);
+
+            // Bind filter buttons
+            document.getElementById('filterAll').addEventListener('click', function() { filterWords('all'); });
+            document.getElementById('filterCore').addEventListener('click', function() { filterWords('中考核心'); });
+            document.getElementById('filterExpand').addEventListener('click', function() { filterWords('中考拓展'); });
+            document.getElementById('filterGeneral').addEventListener('click', function() { filterWords('中考一般'); });
+
+            // Bind search input
+            document.getElementById('searchInput').addEventListener('input', function() {
+                searchWords(this.value);
+            });
+
+            // Close modal on outside click
+            document.getElementById('wordModal').addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeModal();
+                }
+            });
+        }
+
+        // Wait for DOM and words.js to load
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            // DOM already loaded
+            setTimeout(init, 100);
+        }
     </script>
 </body>
 </html>
